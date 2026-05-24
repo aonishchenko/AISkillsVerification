@@ -23,6 +23,12 @@ type Report = {
   verdict: 'safe' | 'warn' | 'unsafe';
   purpose: { label: string; confidence: string; signals: string[] };
   findings: Finding[];
+  llm?: {
+    enabled: boolean;
+    auditors: Array<{ provider: string; model: string; findingCount: number; error?: string }>;
+    aggregator: { fallback: boolean };
+    totalCost: number;
+  };
 };
 
 function App() {
@@ -125,6 +131,11 @@ function App() {
           <div className="purpose">
             <strong>Identified purpose</strong>
             <p>{report.purpose.label} ({report.purpose.confidence} confidence)</p>
+          </div>
+
+          <div className="purpose">
+            <strong>LLM consensus</strong>
+            <p>{report.llm?.enabled ? `${report.llm.auditors.map((auditor) => `${auditor.provider}:${auditor.model}`).join(' + ')}. Estimated cost: $${report.llm.totalCost.toFixed(6)}.` : 'Not configured. Static rules only.'}</p>
           </div>
 
           <div className="findings">

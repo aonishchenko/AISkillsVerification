@@ -1,7 +1,9 @@
 import { extractSkillSignals, parseSkill, runRules, type Finding, type NormalizedFile } from '@aiskillsverification/rules';
 import { normalize, type RawSourceFile } from './bundle';
+import { hasLlmProvider, llmConsensusReview, type AggregatedReview, type LlmConsensusOptions, type LlmUsageEstimate } from './llm';
 export { isSource, normalize, type RawSourceFile, type NormalizedFile } from './bundle';
 export { resolveGithubUrl } from './github';
+export { hasLlmProvider, llmConsensusReview, MODEL_PRICING, selectAuditModels, type AggregatedReview, type AuditorResult, type LlmConsensusOptions, type LlmUsageEstimate, type LlmModelConfig, type ModelPricing, type WorkersAiBinding } from './llm';
 export { readZipSourceFiles } from './zip';
 
 export type Verdict = 'safe' | 'warn' | 'unsafe';
@@ -32,18 +34,35 @@ export type VerificationReport = {
   verdict: Verdict;
   purpose: SkillPurpose;
   findings: Finding[];
+  llm?: {
+    enabled: boolean;
+    auditors: Array<{ provider: string; model: string; findingCount: number; error?: string; usage: LlmUsageEstimate | null }>;
+    aggregator: { fallback: boolean; usage: LlmUsageEstimate | null };
+    totalCost: number;
+  };
 };
+
+export interface VerificationOptions {
+  llm?: boolean | LlmConsensusOptions;
+}
 
 export async function verifySkillSource(
   rawFiles: RawSourceFile[],
   source: { sourceType: VerificationReport['sourceType']; sourceRef?: string | null },
+  options: VerificationOptions = {},
 ): Promise<VerificationReport> {
   const { files, bundleHash } = await normalize(rawFiles);
   if (files.length === 0) throw new Error('no_supported_source_files');
 
   const findings = await runRules(files as NormalizedFile[]);
-  const { score, verdict } = scoreFindings(findings);
-  const purpose = inferSkillPurpose(files as NormalizedFile[]);
+  const heuristicPurpose = inferSkillPurpose(files as NormalizedFile[]);
+  const llmOptions = typeof options.llm === 'object' ? options.llm : null;
+  const consensus = llmOptions && hasLlmProvider(llmOptions)
+    ? await llmConsensusReview(llmOptions, files as NormalizedFile[], findings, heuristicPurpose)
+    : null;
+  const finalFindings = consensus ? dedupeFindings([...findings, ...consensus.findings]) : findings;
+  const { score, verdict } = scoreFindings(finalFindings);
+  const purpose = consensus?.purpose ?? heuristicPurpose;
 
   return {
     bundleHash,
@@ -54,7 +73,8 @@ export async function verifySkillSource(
     score,
     verdict,
     purpose,
-    findings,
+    findings: finalFindings,
+    llm: formatLlmSummary(consensus),
   };
 }
 
@@ -80,6 +100,38 @@ export function scoreFindings(findings: Finding[]): { score: number; verdict: Ve
       ? 'safe'
       : 'warn';
   return { score, verdict };
+}
+
+function formatLlmSummary(consensus: AggregatedReview | null): VerificationReport['llm'] {
+  if (!consensus) return { enabled: false, auditors: [], aggregator: { fallback: false, usage: null }, totalCost: 0 };
+  const usages = [
+    ...consensus.auditors.map((auditor) => auditor.usage),
+    consensus.usage,
+  ].filter((usage): usage is LlmUsageEstimate => Boolean(usage));
+  return {
+    enabled: true,
+    auditors: consensus.auditors.map((auditor) => ({
+      provider: auditor.provider,
+      model: auditor.model,
+      findingCount: auditor.findings.length,
+      error: auditor.error,
+      usage: auditor.usage,
+    })),
+    aggregator: {
+      fallback: consensus.fallback,
+      usage: consensus.usage,
+    },
+    totalCost: Number(usages.reduce((sum, usage) => sum + usage.totalCost, 0).toFixed(8)),
+  };
+}
+
+function dedupeFindings(findings: Finding[]): Finding[] {
+  const byKey = new Map<string, Finding>();
+  for (const finding of findings) {
+    const key = `${finding.ruleId}|${finding.category}|${finding.severity}|${finding.explanation}|${finding.snippet ?? ''}`.toLowerCase();
+    if (!byKey.has(key)) byKey.set(key, finding);
+  }
+  return [...byKey.values()];
 }
 
 export function inferSkillPurpose(files: NormalizedFile[]): SkillPurpose {

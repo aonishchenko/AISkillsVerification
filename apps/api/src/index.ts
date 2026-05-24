@@ -1,11 +1,23 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
-import { readZipSourceFiles, resolveGithubUrl, verifySkillSource, type RawSourceFile } from '@aiskillsverification/engine';
+import { readZipSourceFiles, resolveGithubUrl, verifySkillSource, type RawSourceFile, type WorkersAiBinding } from '@aiskillsverification/engine';
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
-const app = new Hono();
+type Bindings = {
+  AI?: WorkersAiBinding;
+  CF_AUDITOR_MODEL_PRIMARY?: string;
+  CF_AUDITOR_MODEL_SECONDARY?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_TEXT_MODEL?: string;
+  ANTHROPIC_API_KEY?: string;
+  ANTHROPIC_TEXT_MODEL?: string;
+  GOOGLE_API_KEY?: string;
+  GOOGLE_TEXT_MODEL?: string;
+};
+
+const app = new Hono<{ Bindings: Bindings }>();
 
 app.use('/v1/*', cors({
   origin: '*',
@@ -48,7 +60,19 @@ app.post('/v1/verify', async (c) => {
       files = await resolveGithubUrl(parsed.data.githubUrl);
     }
 
-    const report = await verifySkillSource(files, { sourceType, sourceRef });
+    const report = await verifySkillSource(files, { sourceType, sourceRef }, {
+      llm: {
+        workersAi: c.env.AI,
+        cfAuditorModelPrimary: c.env.CF_AUDITOR_MODEL_PRIMARY,
+        cfAuditorModelSecondary: c.env.CF_AUDITOR_MODEL_SECONDARY,
+        openaiApiKey: c.env.OPENAI_API_KEY,
+        openaiTextModel: c.env.OPENAI_TEXT_MODEL,
+        anthropicApiKey: c.env.ANTHROPIC_API_KEY,
+        anthropicTextModel: c.env.ANTHROPIC_TEXT_MODEL,
+        googleApiKey: c.env.GOOGLE_API_KEY,
+        googleTextModel: c.env.GOOGLE_TEXT_MODEL,
+      },
+    });
     return c.json(report);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'verification_failed';

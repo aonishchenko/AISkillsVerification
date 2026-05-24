@@ -7,3 +7,18 @@ compatibility_flags = ["nodejs_compat"]
 directory = "../web/dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
+
+[ai]
+binding = "AI"
+
+[vars]
+CF_AUDITOR_MODEL_PRIMARY = "@cf/moonshotai/kimi-k2.6"
+CF_AUDITOR_MODEL_SECONDARY = "@cf/openai/gpt-oss-120b"
+# Optional external providers. Set secrets with wrangler secret put.
+# OPENAI_API_KEY
+# ANTHROPIC_API_KEY
+# GOOGLE_API_KEY
+# Optional model overrides:
+# OPENAI_TEXT_MODEL = "gpt-5.4-nano"
+# ANTHROPIC_TEXT_MODEL = "claude-haiku-4-5-20251001"
+# GOOGLE_TEXT_MODEL = "gemini-3.1-flash-lite"

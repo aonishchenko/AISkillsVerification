@@ -2,7 +2,7 @@
 
 Open-source verification engine for AI agent skills, extracted from the core logic of SafeSkillMD.com
 
-It checks skill files and bundles for prompt injection, data exfiltration, secret access, risky helpers, hidden instructions, and excessive permissions before you add them to an agent environment.
+It checks skill files and bundles for prompt injection, data exfiltration, secret access, risky helpers, hidden instructions, and excessive permissions before you add them to an agent environment. The engine includes both static rules and the optional two-auditor LLM consensus flow used by the hosted service.
 
 This repository intentionally excludes the hosted product pieces:
 
@@ -21,7 +21,7 @@ This repository intentionally excludes the hosted product pieces:
 │   └── web/       # Minimal React UI for local/manual verification
 ├── packages/
 │   ├── rules/     # Static rule engine
-│   └── engine/    # Bundle normalization, ZIP/GitHub loading, scoring, purpose inference
+│   └── engine/    # Bundle loading, static rules, LLM consensus, scoring, purpose inference
 └── examples/      # Clean and malicious sample skills
 ```
 
@@ -42,9 +42,11 @@ Unsupported/binary files are ignored during normalization.
 3. Parse skill metadata from `SKILL.md` or the primary Markdown file.
 4. Run static rules over the bundle.
 5. Infer skill purpose from frontmatter and text signals.
-6. Score findings into `safe`, `warn`, or `unsafe`.
+6. If configured, run two LLM auditors in parallel.
+7. Aggregate auditor outputs with the cheaper auditor model.
+8. Score findings into `safe`, `warn`, or `unsafe`.
 
-The open-source engine is deterministic and does not require LLM API keys.
+Static-only verification works without API keys. Full LLM consensus works with Cloudflare Workers AI, or with external OpenAI, Anthropic, or Google API keys. If more than one external key is configured, the engine selects the cheapest external model as the second auditor. Aggregation uses the cheaper of the two auditor models.
 
 ## Quick Start
 
@@ -65,6 +67,29 @@ Run the local API:
 ```bash
 cp apps/api/wrangler.example.toml apps/api/wrangler.toml
 pnpm dev:api
+```
+
+The included Wrangler config enables Cloudflare Workers AI by default:
+
+```toml
+[ai]
+binding = "AI"
+```
+
+Optional external providers can be configured as Worker secrets:
+
+```bash
+wrangler secret put OPENAI_API_KEY
+wrangler secret put ANTHROPIC_API_KEY
+wrangler secret put GOOGLE_API_KEY
+```
+
+Optional model overrides are exposed as environment variables:
+
+```toml
+OPENAI_TEXT_MODEL = "gpt-5.4-nano"
+ANTHROPIC_TEXT_MODEL = "claude-haiku-4-5-20251001"
+GOOGLE_TEXT_MODEL = "gemini-3.1-flash-lite"
 ```
 
 Run the web UI:
@@ -108,6 +133,14 @@ const encoder = new TextEncoder();
 const report = await verifySkillSource(
   [{ path: 'SKILL.md', bytes: encoder.encode(markdown) }],
   { sourceType: 'file', sourceRef: 'SKILL.md' },
+  {
+    llm: {
+      workersAi: env.AI,
+      openaiApiKey: env.OPENAI_API_KEY,
+      anthropicApiKey: env.ANTHROPIC_API_KEY,
+      googleApiKey: env.GOOGLE_API_KEY,
+    },
+  },
 );
 
 console.log(report.score, report.verdict, report.findings);
