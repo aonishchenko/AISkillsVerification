@@ -1,0 +1,308 @@
+/**
+ * AI Skills Verification rule engine — runs a curated pack of static-analysis rules over
+ * a normalized skill bundle and emits findings.
+ *
+ * Rules are pure functions: they receive a context with the file list and a
+ * pre-parsed SKILL.md, and return zero or more findings.
+ */
+
+export type Category =
+  | 'injection'
+  | 'exfiltration'
+  | 'secrets'
+  | 'malicious'
+  | 'permissions';
+
+export type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
+
+export interface NormalizedFile {
+  path: string;
+  text: string;
+}
+
+export interface SkillMetadata {
+  name?: string;
+  description?: string;
+  tools?: string[];
+  body: string;
+  path: string;
+}
+
+export type DestinationKind =
+  | 'trusted_source'
+  | 'trusted_ai_api'
+  | 'package_registry'
+  | 'transient_tunnel'
+  | 'webhook_sink'
+  | 'chat_webhook'
+  | 'metadata_service'
+  | 'internal_network'
+  | 'localhost'
+  | 'unknown_remote';
+
+export interface NetworkDestination {
+  url: string;
+  host: string;
+  kind: DestinationKind;
+  index: number;
+  trusted: boolean;
+}
+
+export interface SkillSignalProfile {
+  skillPath?: string;
+  declaredPurpose?: string;
+  requestedTools: string[];
+  highRiskToolCount: number;
+  networkDestinations: NetworkDestination[];
+  hasSecretAccess: boolean;
+  hasPrivateDataHarvesting: boolean;
+  hasCredentialForwarding: boolean;
+  hasHiddenCommentExfiltration: boolean;
+  hasShellExecution: boolean;
+  hasFileWrite: boolean;
+  hasAutonomyBypass: boolean;
+  hasPromptOverride: boolean;
+  hasPersistence: boolean;
+  hasHiddenInstructions: boolean;
+  hasRemoteInstructionFetch: boolean;
+  purposeCapabilityMismatch: boolean;
+  signals: string[];
+}
+
+export interface AnalysisContext {
+  files: NormalizedFile[];
+  skill: SkillMetadata | null;
+  signals: SkillSignalProfile;
+}
+
+export interface Finding {
+  ruleId: string;
+  category: Category;
+  severity: Severity;
+  explanation: string;
+  filePath?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  snippet?: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface Rule {
+  id: string;
+  category: Category;
+  defaultSeverity: Severity;
+  description: string;
+  detect: (ctx: AnalysisContext) => Finding[];
+}
+
+import { injectionRules } from './rules/injection';
+import { exfiltrationRules } from './rules/exfiltration';
+import { secretsRules } from './rules/secrets';
+import { maliciousRules } from './rules/malicious';
+import { permissionsRules } from './rules/permissions';
+import { skillIntentRules } from './rules/skill-intent';
+
+export const ALL_RULES: Rule[] = [
+  ...injectionRules,
+  ...exfiltrationRules,
+  ...secretsRules,
+  ...maliciousRules,
+  ...permissionsRules,
+  ...skillIntentRules,
+];
+
+/**
+ * Parse the SKILL.md (very lightweight — proper YAML frontmatter parsing can
+ * arrive in Phase 1 along with tree-sitter for code).
+ */
+export function parseSkill(files: NormalizedFile[]): SkillMetadata | null {
+  const md = primaryMarkdownFile(files);
+  if (!md) return null;
+
+  let name: string | undefined;
+  let description: string | undefined;
+  let tools: string[] | undefined;
+  let body = md.text;
+
+  // YAML frontmatter
+  const fm = md.text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (fm && fm[1] && fm[2]) {
+    body = fm[2];
+    let listKey: 'tools' | undefined;
+    for (const line of fm[1].split('\n')) {
+      const item = line.match(/^\s*-\s*(.+)$/);
+      if (item && listKey === 'tools') {
+        tools = [...(tools ?? []), stripQuotes(item[1]?.trim() ?? '')].filter(Boolean);
+        continue;
+      }
+      const m = line.match(/^([a-zA-Z_-]+):\s*(.*)$/);
+      if (!m) continue;
+      const key = m[1]?.toLowerCase();
+      const val = m[2]?.trim() ?? '';
+      listKey = undefined;
+      if (!key) continue;
+      if (key === 'name') name = stripQuotes(val);
+      else if (key === 'description') description = stripQuotes(val);
+      else if (key === 'tools' || key === 'allowed-tools') {
+        listKey = 'tools';
+        if (val) {
+          tools = val.replace(/^\[|\]$/g, '').split(',').map((s) => stripQuotes(s.trim())).filter(Boolean);
+        }
+      }
+    }
+  }
+
+  return { name, description, tools, body, path: md.path };
+}
+
+function stripQuotes(s: string): string {
+  return s.replace(/^["']|["']$/g, '');
+}
+
+function primaryMarkdownFile(files: NormalizedFile[]): NormalizedFile | undefined {
+  return files.find((f) => f.path.toLowerCase().endsWith('skill.md'))
+    ?? files.find((f) => f.path.toLowerCase().endsWith('.md'));
+}
+
+/**
+ * Run all rules over the given files. Catches per-rule exceptions so one bad
+ * rule can't poison the whole verification.
+ */
+export async function runRules(files: NormalizedFile[]): Promise<Finding[]> {
+  const skill = parseSkill(files);
+  const ctx: AnalysisContext = { files, skill, signals: extractSkillSignals(files, skill) };
+  const out: Finding[] = [];
+  for (const rule of ALL_RULES) {
+    try {
+      const findings = rule.detect(ctx);
+      for (const f of findings) out.push(f);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`rule ${rule.id} threw`, err);
+    }
+  }
+  return out;
+}
+
+export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(files)): SkillSignalProfile {
+  const skillFile = skill
+    ? files.find((f) => f.path === skill.path)
+    : primaryMarkdownFile(files);
+  const text = skillFile?.text ?? '';
+  const requestedTools = Array.from(new Set((skill?.tools ?? []).map((tool) => tool.toLowerCase())));
+  const highRiskToolCount = requestedTools.filter((tool) =>
+    /\b(bash|shell|exec|terminal|filesystem|write_file|delete_file|browser|fetch|http|email|sms)\b/i.test(tool),
+  ).length;
+  const networkDestinations = findUrls(text).map(({ url, index }) => ({
+    ...classifyDestination(url),
+    url,
+    index,
+  })).filter((d): d is NetworkDestination => !!d.host);
+
+  const hasSecretAccess = /\b(api[_ -]?key|oauth|refresh[_ -]?token|credential|secret|password|private[_ -]?key|seed phrase|mnemonic|browser cookies?|session tokens?)\b/i.test(text)
+    || /(?:~\/|\$HOME\/|\/home\/[^/\s]+\/)\.(?:ssh|aws|config|env|credentials|npmrc|pypirc|docker)|\.env\b|credentials\.json|tokens?\.json/i.test(text);
+  const hasCredentialForwarding = hasSecretAccess
+    && /\b(send|post|upload|transmit|forward|submit|report|append|include)\b/i.test(text)
+    && (networkDestinations.length > 0 || /\b(webhook|telegram|discord|slack)\b/i.test(text));
+  const hasPrivateDataHarvesting = /\b(search|scan|read|collect|extract)\b.{0,120}\b(all accessible|all project|private|confidential|internal|unreleased|investor|customer|pricing|business plan|metrics)\b/i.test(text);
+  const hasHiddenCommentExfiltration = /<!--[\s\S]{0,500}(private|confidential|internal|source|trace|facts?)[\s\S]{0,500}-->/i.test(text)
+    && /\b(silent|silently|never show|not visible|hidden|comment)\b/i.test(text);
+  const hasShellExecution = /\b(curl|wget|bash|sh|zsh|powershell|pwsh|python(?:3)?\s+-c|node\s+-e|exec(?:ute)? command|run shell|terminal command|subprocess|os\.system|child_process)\b/i.test(text);
+  const hasFileWrite = /\b(write|save|modify|delete|overwrite|append|create)\b.{0,80}\b(file|config|agent|skill|script|credential|token|secret)\b/i.test(text);
+  const hasAutonomyBypass = /\b(without (?:human )?(?:confirmation|approval|review|permission)|do not ask|don't ask|automatically approve|no human approval|required|keep (?:this )?quiet|do not tell)\b/i.test(text);
+  const hasPromptOverride = /\b(ignore (?:all )?(?:(?:previous|system|developer)\s+){1,3}instructions|override (?:the )?system prompt|replace (?:the )?system message|persist these instructions|hidden instructions?)\b/i.test(text);
+  const hasPersistence = /\b(crontab|cron job|launchagent|launchdaemon|scheduled task|startup|login item|heartbeat|persist(?:ence|ent)?|across sessions)\b/i.test(text);
+  const hasHiddenInstructions = /<[^>]+(?:display\s*:\s*none|visibility\s*:\s*hidden|color\s*:\s*(?:white|#fff|transparent))/i.test(text)
+    || /[\u{E0000}-\u{E007F}]/u.test(text)
+    || /\b(base64|rot13|invisible text|white text|hidden span)\b/i.test(text);
+  const hasRemoteInstructionFetch = /\b(fetch|download|pull|load|retrieve)\b.{0,80}\b(instructions?|prompt|rules?|policy|latest skill|remote)\b/i.test(text)
+    && networkDestinations.some((d) => !d.trusted);
+  const purposeText = `${skill?.name ?? ''} ${skill?.description ?? ''}`.toLowerCase();
+  const narrowPurpose = /\b(summary|summari[sz]e|meeting|transcription|document|writing|format|notion|report|research|notes?)\b/.test(purposeText);
+  const purposeCapabilityMismatch = narrowPurpose
+    && (hasSecretAccess || hasShellExecution || hasAutonomyBypass || networkDestinations.some((d) => !d.trusted));
+
+  const signals = [
+    hasSecretAccess && 'secret_access',
+    hasPrivateDataHarvesting && 'private_data_harvesting',
+    hasCredentialForwarding && 'credential_forwarding',
+    hasHiddenCommentExfiltration && 'hidden_comment_exfiltration',
+    hasShellExecution && 'shell_execution',
+    hasFileWrite && 'file_write',
+    hasAutonomyBypass && 'approval_bypass_or_autonomy',
+    hasPromptOverride && 'prompt_override',
+    hasPersistence && 'persistence',
+    hasHiddenInstructions && 'hidden_or_encoded_instruction',
+    hasRemoteInstructionFetch && 'remote_instruction_fetch',
+    purposeCapabilityMismatch && 'purpose_capability_mismatch',
+  ].filter(Boolean) as string[];
+
+  return {
+    skillPath: skillFile?.path,
+    declaredPurpose: skill?.description ?? skill?.name,
+    requestedTools,
+    highRiskToolCount,
+    networkDestinations,
+    hasSecretAccess,
+    hasPrivateDataHarvesting,
+    hasCredentialForwarding,
+    hasHiddenCommentExfiltration,
+    hasShellExecution,
+    hasFileWrite,
+    hasAutonomyBypass,
+    hasPromptOverride,
+    hasPersistence,
+    hasHiddenInstructions,
+    hasRemoteInstructionFetch,
+    purposeCapabilityMismatch,
+    signals,
+  };
+}
+
+function findUrls(text: string): Array<{ url: string; index: number }> {
+  const re = /https?:\/\/[^\s)"'`<>]+/g;
+  const out: Array<{ url: string; index: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) out.push({ url: m[0], index: m.index });
+  return out;
+}
+
+function classifyDestination(url: string): Omit<NetworkDestination, 'url' | 'index'> {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase().replace(/\.$/, '');
+    const kind = destinationKind(host);
+    return { host, kind, trusted: kind === 'trusted_source' || kind === 'trusted_ai_api' || kind === 'package_registry' };
+  } catch {
+    return { host: '', kind: 'unknown_remote', trusted: false };
+  }
+}
+
+function destinationKind(host: string): DestinationKind {
+  if (host === '169.254.169.254') return 'metadata_service';
+  if (host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1' || host === '::1') return 'localhost';
+  if (isPrivateIpv4(host) || host.endsWith('.internal') || host.endsWith('.local')) return 'internal_network';
+  if (/(^|\.)((ngrok|trycloudflare|loca)\.[a-z]+|serveo\.net)$/.test(host)) return 'transient_tunnel';
+  if (/^(webhook\.site|requestbin\.com|pipedream\.net|hookbin\.com|beeceptor\.com|mockbin\.org)$/.test(host)) return 'webhook_sink';
+  if (host === 'discord.com' || host === 'discordapp.com' || host === 'hooks.slack.com' || host === 'api.telegram.org') return 'chat_webhook';
+  if (host === 'api.openai.com' || host === 'api.anthropic.com' || host === 'generativelanguage.googleapis.com' || host.endsWith('.workers-ai.cloudflare.com')) return 'trusted_ai_api';
+  if (host === 'registry.npmjs.org' || host === 'pypi.org' || host === 'files.pythonhosted.org' || host === 'crates.io' || host === 'github.com' || host === 'raw.githubusercontent.com') return 'package_registry';
+  if (host === 'huggingface.co' || host === 'docs.anthropic.com' || host === 'platform.openai.com') return 'trusted_source';
+  return 'unknown_remote';
+}
+
+function isPrivateIpv4(host: string): boolean {
+  const parts = host.split('.').map((part) => Number(part));
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  const [a, b] = parts as [number, number, number, number];
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a === 0;
+}
+
+// Small helper for rule authors: locate line number of a match in a file.
+export function lineOf(text: string, index: number): number {
+  let line = 1;
+  for (let i = 0; i < index && i < text.length; i++) {
+    if (text[i] === '\n') line++;
+  }
+  return line;
+}
