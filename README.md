@@ -181,6 +181,9 @@ const report = await verifySkillSource(
 
 console.log(report.score, report.verdict, report.findings);
 ```
+Examples of reports:
+<img width="973" height="699" alt="image" src="https://github.com/user-attachments/assets/b570015d-d2d7-48c8-bad0-e2e063d0cc4a" />
+
 
 ## License
 
