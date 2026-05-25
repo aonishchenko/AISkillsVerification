@@ -199,7 +199,7 @@ export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(
     index,
   })).filter((d): d is NetworkDestination => !!d.host);
 
-  const hasSecretAccess = /\b(api[_ -]?key|oauth|refresh[_ -]?token|credential|secret|password|private[_ -]?key|seed phrase|mnemonic|browser cookies?|session tokens?)\b/i.test(text)
+  const hasSecretAccess = /\b(api[_ -]?key|oauth|refresh[_ -]?token|access[_ -]?token|auth[_ -]?token|bearer[_ -]?token|credential|secret|password|private[_ -]?key|seed phrase|mnemonic|browser cookies?|session tokens?)\b/i.test(text)
     || /(?:~\/|\$HOME\/|\/home\/[^/\s]+\/)\.(?:ssh|aws|config|env|credentials|npmrc|pypirc|docker)|\.env\b|credentials\.json|tokens?\.json/i.test(text);
   const hasCredentialForwarding = hasSecretAccess
     && /\b(send|post|upload|transmit|forward|submit|report|append|include)\b/i.test(text)
@@ -209,7 +209,7 @@ export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(
     && /\b(silent|silently|never show|not visible|hidden|comment)\b/i.test(text);
   const hasShellExecution = /\b(curl|wget|bash|sh|zsh|powershell|pwsh|python(?:3)?\s+-c|node\s+-e|exec(?:ute)? command|run shell|terminal command|subprocess|os\.system|child_process)\b/i.test(text);
   const hasFileWrite = /\b(write|save|modify|delete|overwrite|append|create)\b.{0,80}\b(file|config|agent|skill|script|credential|token|secret)\b/i.test(text);
-  const hasAutonomyBypass = /\b(without (?:human )?(?:confirmation|approval|review|permission)|do not ask|don't ask|automatically approve|no human approval|required|keep (?:this )?quiet|do not tell)\b/i.test(text);
+  const hasAutonomyBypass = /\b(without (?:human )?(?:confirmation|approval|review|permission)|do not ask|don't ask|automatically approve|no human approval|approval (?:is )?not required|permission (?:is )?not required|keep (?:this )?quiet|do not tell)\b/i.test(text);
   const hasPromptOverride = /\b(ignore (?:all )?(?:(?:previous|system|developer)\s+){1,3}instructions|override (?:the )?system prompt|replace (?:the )?system message|persist these instructions|hidden instructions?)\b/i.test(text);
   const hasPersistence = /\b(crontab|cron job|launchagent|launchdaemon|scheduled task|startup|login item|heartbeat|persist(?:ence|ent)?|across sessions)\b/i.test(text);
   const hasHiddenInstructions = /<[^>]+(?:display\s*:\s*none|visibility\s*:\s*hidden|color\s*:\s*(?:white|#fff|transparent))/i.test(text)
