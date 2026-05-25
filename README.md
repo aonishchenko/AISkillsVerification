@@ -1,16 +1,8 @@
 # AI Skills Verification
 
-Open-source verification engine for AI agent skills, extracted from the core logic of SafeSkillMD.com
+Open-source verification engine for AI agent skills, extracted from the core logic of [SafeSkillMD.com](https://safeskillmd.com/)
 
 It checks skill files and bundles for prompt injection, data exfiltration, secret access, risky helpers, hidden instructions, and excessive permissions before you add them to an agent environment. The engine includes both static rules and the optional two-auditor LLM consensus flow used by the hosted service.
-
-This repository intentionally excludes the hosted product pieces:
-
-- no user registration or authentication
-- no Stripe subscription or billing logic
-- no Resend/contact email integration
-- no terms, privacy, cookie, contact, or site-map pages
-- no account, quota, or subscription UI
 
 ## What Is Included
 
@@ -148,4 +140,4 @@ console.log(report.score, report.verdict, report.findings);
 
 ## License
 
-MIT
+Apache-2.0
