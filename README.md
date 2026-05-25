@@ -74,6 +74,22 @@ Unsupported/binary files are ignored during normalization.
 
 Static-only verification works without API keys. Full LLM consensus works with Cloudflare Workers AI, or with external OpenAI, Anthropic, or Google API keys. If more than one external key is configured, the engine selects the cheapest external model as the second auditor. Aggregation uses the cheaper of the two auditor models.
 
+## Local Cloudflare Dependency
+
+The local API runs through Wrangler. The Worker code and web assets run on your machine, but the default `AI` binding is a real Cloudflare Workers AI binding:
+
+```text
+browser -> localhost:5173 web UI -> localhost:8787 local Worker -> Cloudflare Workers AI
+```
+
+That means full LLM consensus requires a Cloudflare account authenticated with Wrangler, and Workers AI calls may use real Cloudflare resources. Check the active account with:
+
+```bash
+npx wrangler whoami
+```
+
+If you do not want to use Cloudflare Workers AI, remove or comment out the `[ai]` binding in `apps/api/wrangler.toml` and configure two external providers with secrets instead, or call the engine directly without `llm` options for static-only verification.
+
 ## Threat Categories
 
 The current rules and auditors focus on practical AI agent skill risks:
@@ -111,6 +127,8 @@ The included Wrangler config enables Cloudflare Workers AI by default:
 [ai]
 binding = "AI"
 ```
+
+This is required for the default LLM consensus path. It is not required for static-only engine usage.
 
 Optional external providers can be configured as Worker secrets:
 
