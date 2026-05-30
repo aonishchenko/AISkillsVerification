@@ -1,0 +1,56 @@
+name = "x-growth-agent"
+main = "src/index.ts"
+compatibility_date = "2026-05-24"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers AI: free-tier model used for curation, drafting, the editor gate,
+# and the daily strategy rewrite. No external LLM key required.
+[ai]
+binding = "AI"
+
+# Durable Object that holds the long-lived, stateful agent (Cloudflare Agents
+# pattern). One instance owns the create + learn loops and serializes posting.
+[[durable_objects.bindings]]
+name = "AGENT"
+class_name = "XGrowthAgent"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["XGrowthAgent"]
+
+# D1 is the knowledge base: candidates, published posts, pending metric checks,
+# pattern performance scores, and the current strategy.
+[[d1_databases]]
+binding = "DB"
+database_name = "x_growth_agent"
+database_id = "REPLACE_WITH_YOUR_D1_ID"
+
+# Two cron triggers drive the whole system with zero human involvement.
+#   - create loop: runs often; an internal day-budget caps it at 1-4 posts/day
+#   - learn loop:  once daily; pulls 24-48h engagement and rewrites strategy
+[triggers]
+crons = ["0 13,17,21 * * *", "30 6 * * *"]
+
+[vars]
+# Posting cadence guardrails.
+MAX_POSTS_PER_DAY = "4"
+MIN_MINUTES_BETWEEN_POSTS = "180"
+# Brand / voice config (see src/config.ts for the full default).
+ACCOUNT_NICHE = "AI automation and AI agent security"
+WEBSITE_URL = "https://safeskillmd.com/"
+# Comma-separated RSS feeds: your blog, AI-security news, Google News queries,
+# and a LinkedIn RSS-bridge URL for your public posts.
+RSS_FEEDS = "https://safeskillmd.com/blog/rss.xml"
+# Telegram channels are read via the official Bot API (compliant, not scraping).
+# TELEGRAM_BOT_TOKEN  -> wrangler secret put TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_IDS = ""
+
+# Cloudflare AI model ids (override if desired).
+CF_WRITER_MODEL = "@cf/meta/llama-3.3-70b-instruct"
+CF_RANKER_MODEL = "@cf/meta/llama-3.3-70b-instruct"
+
+# --- Secrets (set with `wrangler secret put NAME`) ---
+# X API v2 OAuth (user context, required to POST tweets and read organic metrics):
+#   X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET
+# Optional Telegram ingestion:
+#   TELEGRAM_BOT_TOKEN
