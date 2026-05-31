@@ -10,6 +10,26 @@ It runs almost entirely on Cloudflare's free tier (Workers + Durable Objects +
 D1 + Workers AI). The only paid dependency is the X API Basic tier, which is the
 only ToS-compliant way to auto-post.
 
+## LLM provider (Workers AI or Claude)
+
+`LLM_PROVIDER` selects the brain used for drafting, scoring, the editor gate,
+and the daily strategy rewrite:
+
+- `workers-ai` (default) — free Cloudflare models. ~$0/mo.
+- `anthropic` — Claude. Noticeably better brand voice, editing, and strategy
+  reasoning. **Sonnet** drafts/edits/strategizes; **Haiku** runs the cheap
+  scoring calls; the repeated system prompt is **prompt-cached** to cut input
+  cost ~90%. ~$3–5/mo at 1–4 posts/day.
+
+Embeddings for the novelty signal always use Cloudflare's free model, so the
+Anthropic path needs no embeddings key.
+
+To use Claude, set `LLM_PROVIDER = "anthropic"` in `wrangler.toml` and:
+
+```bash
+wrangler secret put ANTHROPIC_API_KEY
+```
+
 ## How it works
 
 Two cron-driven loops share one knowledge base (D1), modeled on the open-source
@@ -77,8 +97,10 @@ curl -X POST https://<your-worker>/run/learn
 
 ## Cost
 
-- Cloudflare (Workers, Durable Objects, D1, Workers AI): ~$0/mo at this volume.
-- X API Basic tier: ~$100/mo — required for compliant auto-posting.
+- Cloudflare (Workers, Durable Objects, D1, embeddings): ~$0/mo at this volume.
+- LLM brain: ~$0/mo on `workers-ai`, or ~$3–5/mo on `anthropic` (Claude).
+- X API Basic tier: ~$100/mo — required for compliant auto-posting, and the
+  dominant cost regardless of LLM provider.
 
 ## Tuning
 

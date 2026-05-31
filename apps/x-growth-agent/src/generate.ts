@@ -32,7 +32,8 @@ export async function runCreateLoop(env: Bindings, store: Store): Promise<string
   const candidate = candidates[0];
 
   const strategy = await store.getStrategy();
-  const llm = new Llm(env.AI, env.CF_WRITER_MODEL ?? '@cf/meta/llama-3.3-70b-instruct');
+  const llm = Llm.create(env, 'writer'); // drafting + editor gate (stronger model)
+  const ranker = Llm.create(env, 'ranker'); // cheap scoring calls
 
   // 3. Choose which formats to draft, weighted by learned performance.
   const formats = pickFormats(strategy, 3);
@@ -50,7 +51,7 @@ export async function runCreateLoop(env: Bindings, store: Store): Promise<string
   const recentEmb = await Promise.all(recent.map((t) => llm.embed(t)));
   const variants: PostVariant[] = [];
   for (const d of drafts) {
-    const aiScore = await aiViralScore(llm, strategy, d.text);
+    const aiScore = await aiViralScore(ranker, strategy, d.text);
     const patternScore = await store.patternScore(d.format);
     const novelty = await noveltyScore(llm, d.text, recentEmb);
     const composite =

@@ -45,12 +45,25 @@ RSS_FEEDS = "https://safeskillmd.com/blog/rss.xml"
 # TELEGRAM_BOT_TOKEN  -> wrangler secret put TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_IDS = ""
 
-# Cloudflare AI model ids (override if desired).
+# LLM provider for drafting, scoring, the editor gate, and strategy rewrites.
+#   "workers-ai" -> free Cloudflare models (CF_*_MODEL below)
+#   "anthropic"  -> Claude (better voice/editing/strategy; ~$3-5/mo at this volume)
+# Embeddings for the novelty signal always use Cloudflare's free model.
+LLM_PROVIDER = "anthropic"
+
+# Cloudflare AI model ids (used when LLM_PROVIDER = "workers-ai").
 CF_WRITER_MODEL = "@cf/meta/llama-3.3-70b-instruct"
 CF_RANKER_MODEL = "@cf/meta/llama-3.3-70b-instruct"
+
+# Claude model ids (used when LLM_PROVIDER = "anthropic").
+# Sonnet writes/edits/strategizes; Haiku handles the cheap scoring calls.
+ANTHROPIC_MODEL_WRITER = "claude-sonnet-4-6"
+ANTHROPIC_MODEL_RANKER = "claude-haiku-4-5-20251001"
 
 # --- Secrets (set with `wrangler secret put NAME`) ---
 # X API v2 OAuth (user context, required to POST tweets and read organic metrics):
 #   X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET
+# Claude (required when LLM_PROVIDER = "anthropic"):
+#   ANTHROPIC_API_KEY
 # Optional Telegram ingestion:
 #   TELEGRAM_BOT_TOKEN

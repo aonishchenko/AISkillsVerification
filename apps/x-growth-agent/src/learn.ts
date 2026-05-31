@@ -56,7 +56,8 @@ async function rewriteStrategy(
   store: Store,
   samples: Array<{ pattern: string; reward: number; text: string }>,
 ): Promise<void> {
-  const llm = new Llm(env.AI, env.CF_RANKER_MODEL ?? '@cf/meta/llama-3.3-70b-instruct');
+  // Strategy rewrite is high-value reasoning -> use the stronger writer model.
+  const llm = Llm.create(env, 'writer');
   const sorted = [...samples].sort((a, b) => b.reward - a.reward);
   const top = sorted.slice(0, 5);
   const bottom = sorted.slice(-5);

@@ -14,12 +14,18 @@ export type Bindings = {
   CF_WRITER_MODEL?: string;
   CF_RANKER_MODEL?: string;
 
+  // LLM provider selection: 'workers-ai' (default, free) or 'anthropic' (Claude).
+  LLM_PROVIDER?: string;
+  ANTHROPIC_MODEL_WRITER?: string;
+  ANTHROPIC_MODEL_RANKER?: string;
+
   // Secrets.
   X_API_KEY?: string;
   X_API_SECRET?: string;
   X_ACCESS_TOKEN?: string;
   X_ACCESS_SECRET?: string;
   TELEGRAM_BOT_TOKEN?: string;
+  ANTHROPIC_API_KEY?: string;
 };
 
 export type CandidateSource = 'blog' | 'news_rss' | 'telegram' | 'linkedin';
