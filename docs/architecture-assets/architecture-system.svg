@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1040" viewBox="0 0 1800 1040" role="img" aria-labelledby="title desc">
+  <title id="title">AISkillsVerification high-level architecture</title>
+  <desc id="desc">Architecture diagram for the AISkillsVerification project.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#334155"/>
+    </marker>
+    <filter id="softShadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <linearGradient id="engineGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef6ff"/>
+      <stop offset="1" stop-color="#f7fbff"/>
+    </linearGradient>
+    <linearGradient id="trustGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ecfdf5"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+  </defs>
+  <style>
+    .bg { fill: #f8fafc; }
+    .title { font: 800 42px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; letter-spacing: 0; }
+    .subtitle { font: 600 20px Inter, ui-sans-serif, system-ui, sans-serif; fill: #475569; }
+    .label { font: 750 22px Inter, ui-sans-serif, system-ui, sans-serif; fill: #111827; }
+    .smallLabel { font: 750 19px Inter, ui-sans-serif, system-ui, sans-serif; fill: #0f172a; }
+    .body { font: 550 17px Inter, ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+    .tiny { font: 550 14px Inter, ui-sans-serif, system-ui, sans-serif; fill: #475569; }
+    .pillText { font: 750 15px Inter, ui-sans-serif, system-ui, sans-serif; fill: #334155; }
+    .group { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.4; rx: 18; }
+    .groupBlue { fill: url(#engineGrad); stroke: #93c5fd; stroke-width: 2; rx: 22; }
+    .groupGreen { fill: url(#trustGrad); stroke: #86efac; stroke-width: 2; rx: 22; }
+    .box { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2; rx: 12; filter: url(#softShadow); }
+    .boxNoShadow { fill: #ffffff; stroke: #cbd5e1; stroke-width: 1.2; rx: 12; }
+    .blueBox { fill: #dbeafe; stroke: #60a5fa; stroke-width: 1.4; rx: 12; }
+    .greenBox { fill: #dcfce7; stroke: #22c55e; stroke-width: 1.4; rx: 12; }
+    .amberBox { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1.4; rx: 12; }
+    .roseBox { fill: #ffe4e6; stroke: #fb7185; stroke-width: 1.4; rx: 12; }
+    .purpleBox { fill: #ede9fe; stroke: #8b5cf6; stroke-width: 1.4; rx: 12; }
+    .line { fill: none; stroke: #334155; stroke-width: 2; marker-end: url(#arrow); }
+    .softLine { fill: none; stroke: #64748b; stroke-width: 1.6; marker-end: url(#arrow); }
+    .dashLine { fill: none; stroke: #64748b; stroke-width: 1.5; stroke-dasharray: 7 6; marker-end: url(#arrow); }
+    .noArrow { fill: none; stroke: #94a3b8; stroke-width: 1.4; }
+    .sectionName { font: 800 18px Inter, ui-sans-serif, system-ui, sans-serif; fill: #475569; text-transform: uppercase; letter-spacing: 1.2px; }
+  </style>
+  <rect class="bg" x="0" y="0" width="1800" height="1040"/>
+  
+  <text x="56" y="66" text-anchor="start" class="title">
+    <tspan x="56" dy="0">System Architecture</tspan>
+  </text>
+  <text x="58" y="106" text-anchor="start" class="subtitle">
+    <tspan x="58" dy="0">Main system blocks and ownership boundaries. Static rules and optional 2-LLM review are inside the verification engine.</tspan>
+  </text>
+
+  <rect class="group" x="50" y="150" width="330" height="360"/>
+  <text x="82" y="184" text-anchor="start" class="sectionName">
+    <tspan x="82" dy="0">Inputs</tspan>
+  </text>
+  <g>
+    <rect class="boxNoShadow" x="86" y="210" width="255" height="92"/>
+    <text x="213.5" y="244" text-anchor="middle" class="smallLabel">
+    <tspan x="213.5" dy="0">File upload</tspan>
+  </text>
+    <text x="108" y="268" text-anchor="start" class="body">
+    <tspan x="104" dy="0">Single source file or</tspan>
+    <tspan x="104" dy="21">ZIP bundle</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="boxNoShadow" x="86" y="335" width="255" height="122"/>
+    <text x="213.5" y="369" text-anchor="middle" class="smallLabel">
+    <tspan x="213.5" dy="0">GitHub URL</tspan>
+  </text>
+    <text x="108" y="391" text-anchor="start" class="body">
+    <tspan x="108" dy="0">File, folder, or</tspan>
+    <tspan x="108" dy="21">repository with</tspan>
+    <tspan x="108" dy="21">SKILL.md</tspan>
+  </text>
+  </g>
+
+  <rect class="group" x="465" y="135" width="340" height="285"/>
+  <text x="493" y="169" text-anchor="start" class="sectionName">
+    <tspan x="493" dy="0">Application layer</tspan>
+  </text>
+  <g>
+    <rect class="blueBox" x="500" y="200" width="270" height="92"/>
+    <text x="635" y="234" text-anchor="middle" class="smallLabel">
+    <tspan x="635" dy="0">React web UI</tspan>
+  </text>
+    <text x="522" y="260" text-anchor="start" class="body">
+    <tspan x="522" dy="0">Local/manual</tspan>
+    <tspan x="522" dy="21">verification interface</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="blueBox" x="500" y="320" width="270" height="76"/>
+    <text x="635" y="354" text-anchor="middle" class="smallLabel">
+    <tspan x="635" dy="0">Cloudflare Worker API</tspan>
+  </text>
+    <text x="522" y="378" text-anchor="start" class="body">
+    <tspan x="522" dy="0">POST /v1/verify</tspan>
+  </text>
+  </g>
+
+  <rect class="groupBlue" x="430" y="470" width="930" height="470"/>
+  <text x="470" y="510" text-anchor="start" class="sectionName">
+    <tspan x="470" dy="0">Verification engine</tspan>
+  </text>
+  <text x="470" y="542" text-anchor="start" class="subtitle">
+    <tspan x="470" dy="0">Core package that loads, normalizes, analyzes, scores, and returns the report.</tspan>
+  </text>
+  <g>
+    <rect class="boxNoShadow" x="470" y="585" width="235" height="100"/>
+    <text x="587.5" y="620" text-anchor="middle" class="smallLabel">
+    <tspan x="587.5" dy="0">Source loader</tspan>
+  </text>
+    <text x="492" y="646" text-anchor="start" class="body">
+    <tspan x="492" dy="0">File, ZIP, or GitHub</tspan>
+    <tspan x="492" dy="21">source files</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="boxNoShadow" x="755" y="585" width="235" height="116"/>
+    <text x="872.5" y="620" text-anchor="middle" class="smallLabel">
+    <tspan x="872.5" dy="0">Normalization</tspan>
+  </text>
+    <text x="777" y="646" text-anchor="start" class="body">
+    <tspan x="777" dy="0">Supported extensions,</tspan>
+    <tspan x="777" dy="21">line endings, bundle</tspan>
+    <tspan x="777" dy="21">hash</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="boxNoShadow" x="1040" y="585" width="235" height="100"/>
+    <text x="1157.5" y="620" text-anchor="middle" class="smallLabel">
+    <tspan x="1157.5" dy="0">Purpose inference</tspan>
+  </text>
+    <text x="1062" y="646" text-anchor="start" class="body">
+    <tspan x="1062" dy="0">Skill metadata and</tspan>
+    <tspan x="1062" dy="21">text signals</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="greenBox" x="470" y="745" width="385" height="145"/>
+    <text x="662.5" y="780" text-anchor="middle" class="smallLabel">
+    <tspan x="662.5" dy="0">Static security rules</tspan>
+  </text>
+    <text x="492" y="808" text-anchor="start" class="body">
+    <tspan x="492" dy="0">Injection, exfiltration,</tspan>
+    <tspan x="492" dy="21">secrets, risky helpers,</tspan>
+    <tspan x="492" dy="21">permissions</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="purpleBox" x="925" y="745" width="385" height="145"/>
+    <text x="1117.5" y="780" text-anchor="middle" class="smallLabel">
+    <tspan x="1117.5" dy="0">Review by 2 LLMs</tspan>
+    <tspan x="1117.5" dy="22">(if configured)</tspan>
+  </text>
+    <text x="947" y="832" text-anchor="start" class="body">
+    <tspan x="947" dy="0">Two auditors plus aggregator</tspan>
+    <tspan x="947" dy="21">when model providers are</tspan>
+    <tspan x="947" dy="21">configured</tspan>
+  </text>
+  </g>
+
+  <rect class="group" x="1440" y="150" width="320" height="330"/>
+  <text x="1472" y="184" text-anchor="start" class="sectionName">
+    <tspan x="1472" dy="0">External services</tspan>
+  </text>
+  <g>
+    <rect class="boxNoShadow" x="1475" y="215" width="250" height="92"/>
+    <text x="1600" y="249" text-anchor="middle" class="smallLabel">
+    <tspan x="1600" dy="0">GitHub content</tspan>
+  </text>
+    <text x="1497" y="275" text-anchor="start" class="body">
+    <tspan x="1497" dy="0">Repository metadata,</tspan>
+    <tspan x="1497" dy="21">tree, raw files</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="boxNoShadow" x="1475" y="340" width="250" height="104"/>
+    <text x="1600" y="374" text-anchor="middle" class="smallLabel">
+    <tspan x="1600" dy="0">LLM providers</tspan>
+  </text>
+    <text x="1497" y="400" text-anchor="start" class="body">
+    <tspan x="1497" dy="0">Workers AI, OpenAI,</tspan>
+    <tspan x="1497" dy="21">Anthropic, or Google</tspan>
+  </text>
+  </g>
+
+  <rect class="group" x="1440" y="620" width="320" height="270"/>
+  <text x="1472" y="654" text-anchor="start" class="sectionName">
+    <tspan x="1472" dy="0">Verification report</tspan>
+  </text>
+  <g>
+    <rect class="amberBox" x="1475" y="690" width="250" height="70"/>
+    <text x="1600" y="724" text-anchor="middle" class="smallLabel">
+    <tspan x="1600" dy="0">Verdict and score</tspan>
+  </text>
+    <text x="1497" y="750" text-anchor="start" class="body">
+    <tspan x="1497" dy="0">safe / warn / unsafe</tspan>
+  </text>
+  </g>
+  <g>
+    <rect class="amberBox" x="1475" y="790" width="250" height="82"/>
+    <text x="1600" y="824" text-anchor="middle" class="smallLabel">
+    <tspan x="1600" dy="0">Findings and evidence</tspan>
+  </text>
+    <text x="1497" y="850" text-anchor="start" class="body">
+    <tspan x="1497" dy="0">Severity, category,</tspan>
+    <tspan x="1497" dy="21">path, line, snippet</tspan>
+  </text>
+  </g>
+
+  <path class="line" d="M341 256 C410 256 432 246 500 246"/>
+  <path class="line" d="M341 386 C415 386 430 358 500 358"/>
+  <path class="line" d="M635 292 L635 320"/>
+  <path class="line" d="M635 396 C635 438 642 494 585 585"/>
+  <path class="line" d="M705 635 L755 635"/>
+  <path class="line" d="M990 635 L1040 635"/>
+  <path class="line" d="M872 701 C850 728 805 738 720 745"/>
+  <path class="line" d="M1158 685 C1158 715 1140 730 1118 745"/>
+  <path class="dashLine" d="M1475 255 C1370 252 1305 430 1190 585"/>
+  <path class="dashLine" d="M1310 820 C1400 800 1410 430 1475 390"/>
+  <path class="line" d="M1360 755 C1405 742 1435 725 1475 725"/>
+  <path class="line" d="M1360 835 C1420 820 1435 826 1475 830"/>
+  <path class="line" d="M1118 890 C1180 930 1350 880 1475 830"/>
+  
+</svg>

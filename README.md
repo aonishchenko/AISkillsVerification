@@ -38,6 +38,10 @@ If you want to check a skill without running the engine locally, use the hosted 
 
 The hosted service supports uploaded files, ZIP bundles, and public GitHub URLs. It returns a score, a verdict, and findings with severity, category, file path, and line references.
 
+## System Architecture
+
+![AISkillsVerification system architecture](docs/architecture-assets/architecture-system.svg)
+
 ## What Is Included
 
 ```
