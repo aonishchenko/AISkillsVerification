@@ -101,6 +101,7 @@ import { secretsRules } from './rules/secrets';
 import { maliciousRules } from './rules/malicious';
 import { permissionsRules } from './rules/permissions';
 import { skillIntentRules } from './rules/skill-intent';
+import { codeRiskRules } from './rules/code-risk';
 
 export const ALL_RULES: Rule[] = [
   ...injectionRules,
@@ -109,6 +110,7 @@ export const ALL_RULES: Rule[] = [
   ...maliciousRules,
   ...permissionsRules,
   ...skillIntentRules,
+  ...codeRiskRules,
 ];
 
 /**

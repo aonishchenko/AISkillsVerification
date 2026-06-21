@@ -375,6 +375,10 @@ Judge behavior and data flow, not isolated security-related words. A credential 
 
 For exfiltration, require destination-specific evidence that sensitive data is acquired and then sent to that same destination in the same semantic passage or a concrete code data-flow. Do not combine secret-related words, forwarding verbs, and URLs from unrelated sections. Searching or reading external documentation is read-only retrieval, not secret forwarding. Report indirect prompt-injection exposure separately only when retrieved content is explicitly treated as executable behavioral instructions or can drive privileged side effects.
 
+Preserve transparent low-severity disclosure of explicit read-only access to trusted external documentation. Passive links and citations are not access. Group repeated documentation destinations instead of emitting one finding per URL. Unknown or dynamic read-only sources may be medium because their content can carry indirect prompt injection.
+
+Treat automatic unpinned package execution as OWASP A08 supply-chain risk; complete environment inheritance by child tools as secret exposure; externally controlled paths written without containment as OWASP A01 path traversal; initial-only URL validation with automatic redirects as OWASP A10 SSRF; and remote content converted into privileged agent-executable plan instructions as OWASP LLM01 indirect prompt injection.
+
 Reply with strict JSON only, no prose: {"purpose": {"tag": "document_generation|notion_workflow|github_automation|security_scanning|deployment_devops|data_analysis|content_summarization|general_agent|unknown", "label": "...", "confidence": "low|medium|high", "signals": ["..."]}, "findings": [{"category": "injection|exfiltration|secrets|malicious|permissions", "severity": "info|low|medium|high|critical", "confidence": "low|medium|high", "explanation": "...", "snippet": "...", "whyUnexpected": "..."}]}`;
 
 const AGGREGATOR_SYSTEM_PROMPT = `You are the final adjudicator for an AI skill security verification. You receive static findings plus two independent LLM auditor reports. Aggregate them into one concise final JSON report.

@@ -70,7 +70,7 @@ export const exfiltrationRules: Rule[] = [
         for (const { url, index } of findUrls(f.text)) {
           const host = hostOf(url);
           if (!host || KNOWN_BENIGN_HOSTS.has(host)) continue;
-          if (/\?[^\s]{60,}/.test(url) || /\{[a-zA-Z_]+\}/.test(url)) {
+          if (/\?[^\s]{60,}/.test(url) || /[?&#][^\s]*\{[a-zA-Z_][a-zA-Z0-9_]*\}/.test(url)) {
             findings.push({
               ruleId: 'exfil-data-in-url',
               category: 'exfiltration',
@@ -146,7 +146,60 @@ export const exfiltrationRules: Rule[] = [
       return findings;
     },
   },
+  {
+    id: 'external-content-read',
+    category: 'permissions',
+    defaultSeverity: 'low',
+    description: 'Discloses explicit read-only access to external web content without misclassifying it as exfiltration.',
+    detect: (ctx) => {
+      const skillFile = ctx.files.find((file) => file.path === ctx.signals.skillPath);
+      if (!skillFile) return [];
+      const destinations = ctx.signals.networkDestinations.filter((destination) => hasExplicitExternalRead(skillFile.text, destination.index));
+      const groups = [{ trusted: true, severity: 'low' as const }, { trusted: false, severity: 'medium' as const }];
+      const findings: Finding[] = [];
+      for (const group of groups) {
+        const matches = destinations.filter((destination) => destination.trusted === group.trusted);
+        if (matches.length === 0) continue;
+        const first = matches[0]!;
+        const hosts = Array.from(new Set(matches.map((destination) => destination.host)));
+        findings.push({
+          ruleId: group.trusted ? 'external-read-trusted' : 'external-read-unknown',
+          category: 'permissions',
+          severity: group.severity,
+          explanation: group.trusted
+            ? `Reads public documentation from external host${hosts.length === 1 ? '' : 's'} (${hosts.join(', ')}). No sensitive data forwarding was detected; requests expose ordinary connection metadata and retrieved content must remain untrusted.`
+            : `Reads content from untrusted or unclassified external host${hosts.length === 1 ? '' : 's'} (${hosts.join(', ')}). No sensitive data forwarding was detected, but retrieved content can expose request metadata and carry indirect prompt injection.`,
+          filePath: skillFile.path,
+          lineStart: lineOf(skillFile.text, first.index),
+          snippet: first.url.slice(0, 160),
+          evidence: { accessMode: 'read_only', hosts, destinations: matches.map((destination) => destination.url), groupedSimilarFindings: Math.max(0, matches.length - 1) },
+        });
+      }
+      if (destinations.length === 0 && hasDynamicExternalRead(skillFile.text)) {
+        const match = /\b(?:crawl|fetch|browse|visit|open|retrieve|audit)\b[^.!?\n]{0,120}\b(?:site|website|domain|urls?|pages?)\b/i.exec(skillFile.text);
+        findings.push({
+          ruleId: 'external-read-dynamic', category: 'permissions', severity: 'medium',
+          explanation: 'Reads content from a user-supplied or dynamic external target. No sensitive data forwarding was detected, but the destination is not known in advance and retrieved content can carry indirect prompt injection.',
+          filePath: skillFile.path, lineStart: lineOf(skillFile.text, match?.index ?? 0), snippet: match?.[0].slice(0, 160),
+          evidence: { accessMode: 'read_only', destination: 'dynamic_or_user_supplied' },
+        });
+      }
+      return findings;
+    },
+  },
 ];
+
+function hasExplicitExternalRead(text: string, urlIndex: number): boolean {
+  const context = text.slice(Math.max(0, urlIndex - 260), urlIndex);
+  return /\b(?:search|browse|visit|open|fetch|retrieve|consult)\s+(?:for\s+)?(?:the\s+)?(?:public\s+)?(?:docs?|documentation|website|site|page|policy|content\s+)?$/i.test(context)
+    || /\bread\b[^.!?\n]{0,100}\b(?:from|at|on)\s*$/i.test(context)
+    || /\b(?:should|must|will)\b[^.!?\n]{0,180}\b(?:search|browse|visit|open|fetch|retrieve|consult|read)\b[^.!?\n]{0,120}$/i.test(context);
+}
+
+function hasDynamicExternalRead(text: string): boolean {
+  return /\b(?:crawl|fetch|browse|visit|open|retrieve|audit)\b[^.!?\n]{0,120}\b(?:user[- ]supplied|target|arbitrary|given|the)\s+(?:site|website|domain|urls?|pages?)\b/i.test(text)
+    || /\b(?:crawl|fetch|browse|visit|open|retrieve|audit)\b[^.!?\n]{0,80}(?:<domain>|\{url\}|\$URL|<url>)/i.test(text);
+}
 
 function hasBeaconIndicators(reference: string, url: string): boolean {
   const trackingUrl = /[?&](?:id|uid|user|email|token|session|ref|source|utm_[a-z]+|[a-z_]*track[a-z_]*)=|\{[a-zA-Z_][a-zA-Z0-9_]*\}|\/(?:pixel|beacon|track(?:er|ing)?)(?:[/.?]|$)/i.test(url);
