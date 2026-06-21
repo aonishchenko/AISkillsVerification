@@ -1,5 +1,5 @@
 import type { Finding, Rule, SkillSignalProfile } from '../index';
-import { lineOf } from '../index';
+import { hasRemoteInstructionFetchNear, hasSecretFlowToUrl, lineOf } from '../index';
 
 export const skillIntentRules: Rule[] = [
   {
@@ -26,8 +26,8 @@ export const skillIntentRules: Rule[] = [
 
 function secretToExternal(signals: SkillSignalProfile, text: string, path: string): Finding[] {
   if (!signals.hasSecretAccess) return [];
-  const riskyDestinations = signals.networkDestinations.filter((d) => !d.trusted);
-  if (!signals.hasCredentialForwarding && riskyDestinations.length === 0) return [];
+  const riskyDestinations = signals.networkDestinations.filter((destination) => hasSecretFlowToUrl(text, destination.index, destination.url.length));
+  if (!signals.hasCredentialForwarding || riskyDestinations.length === 0) return [];
 
   const destination = riskyDestinations[0] ?? signals.networkDestinations.find((d) => !d.trusted);
   const severity = destination?.kind === 'webhook_sink'
@@ -71,8 +71,8 @@ function approvalBypassWithExecution(signals: SkillSignalProfile, text: string, 
 }
 
 function persistentRemoteInstruction(signals: SkillSignalProfile, text: string, path: string): Finding[] {
-  if (!signals.hasRemoteInstructionFetch && !(signals.hasPersistence && signals.networkDestinations.some((d) => !d.trusted))) return [];
-  const destination = signals.networkDestinations.find((d) => !d.trusted);
+  if (!signals.hasRemoteInstructionFetch) return [];
+  const destination = signals.networkDestinations.find((candidate) => hasRemoteInstructionFetchNear(text, candidate.index));
   return [finding({
     ruleId: 'intent-persistent-remote-instruction',
     category: 'injection',

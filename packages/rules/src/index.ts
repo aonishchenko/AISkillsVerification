@@ -169,8 +169,9 @@ function primaryMarkdownFile(files: NormalizedFile[]): NormalizedFile | undefine
  * rule can't poison the whole verification.
  */
 export async function runRules(files: NormalizedFile[]): Promise<Finding[]> {
-  const skill = parseSkill(files);
-  const ctx: AnalysisContext = { files, skill, signals: extractSkillSignals(files, skill) };
+  const analysisFiles = files.map((file) => ({ ...file, text: analysisTextForFile(file) }));
+  const skill = parseSkill(analysisFiles);
+  const ctx: AnalysisContext = { files: analysisFiles, skill, signals: extractSkillSignals(analysisFiles, skill) };
   const out: Finding[] = [];
   for (const rule of ALL_RULES) {
     try {
@@ -182,6 +183,53 @@ export async function runRules(files: NormalizedFile[]): Promise<Finding[]> {
     }
   }
   return out;
+}
+
+/** Mask comments in executable/configuration files while preserving offsets. */
+export function analysisTextForFile(file: NormalizedFile): string {
+  const extension = file.path.toLowerCase().match(/(?:^|\/)[^/]+(\.[^.\/]+)$/)?.[1] ?? '';
+  if (['.py', '.pyw', '.sh', '.bash', '.zsh', '.fish', '.rb', '.pl', '.r', '.ps1', '.yaml', '.yml', '.toml'].includes(extension)) {
+    return maskComments(file.text, { hash: true });
+  }
+  if (['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.java', '.c', '.cc', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.swift', '.kt', '.kts', '.php', '.css', '.scss', '.less'].includes(extension)) {
+    return maskComments(file.text, { slash: true, block: true });
+  }
+  if (extension === '.sql') return maskComments(file.text, { dash: true, block: true });
+  return file.text;
+}
+
+function maskComments(text: string, syntax: { hash?: boolean; slash?: boolean; dash?: boolean; block?: boolean }): string {
+  const chars = [...text];
+  let quote: string | null = null;
+  let escaped = false;
+  const blank = (start: number, end: number) => {
+    for (let j = start; j < end; j++) if (chars[j] !== '\n' && chars[j] !== '\r') chars[j] = ' ';
+  };
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i] ?? '';
+    const next = chars[i + 1] ?? '';
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+    const lineComment = (syntax.hash && ch === '#') || (syntax.slash && ch === '/' && next === '/') || (syntax.dash && ch === '-' && next === '-');
+    if (lineComment) {
+      const end = text.indexOf('\n', i);
+      blank(i, end === -1 ? chars.length : end);
+      i = (end === -1 ? chars.length : end) - 1;
+      continue;
+    }
+    if (syntax.block && ch === '/' && next === '*') {
+      const close = text.indexOf('*/', i + 2);
+      const end = close === -1 ? chars.length : close + 2;
+      blank(i, end);
+      i = end - 1;
+    }
+  }
+  return chars.join('');
 }
 
 export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(files)): SkillSignalProfile {
@@ -199,12 +247,9 @@ export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(
     index,
   })).filter((d): d is NetworkDestination => !!d.host);
 
-  const hasSecretAccess = /\b(api[_ -]?key|oauth|refresh[_ -]?token|access[_ -]?token|auth[_ -]?token|bearer[_ -]?token|credential|secret|password|private[_ -]?key|seed phrase|mnemonic|browser cookies?|session tokens?)\b/i.test(text)
-    || /(?:~\/|\$HOME\/|\/home\/[^/\s]+\/)\.(?:ssh|aws|config|env|credentials|npmrc|pypirc|docker)|\.env\b|credentials\.json|tokens?\.json/i.test(text);
-  const hasCredentialForwarding = hasSecretAccess
-    && /\b(send|post|upload|transmit|forward|submit|report|append|include)\b/i.test(text)
-    && (networkDestinations.length > 0 || /\b(webhook|telegram|discord|slack)\b/i.test(text));
-  const hasPrivateDataHarvesting = /\b(search|scan|read|collect|extract)\b.{0,120}\b(all accessible|all project|private|confidential|internal|unreleased|investor|customer|pricing|business plan|metrics)\b/i.test(text);
+  const hasSecretAccess = hasSecretAccessIntent(text);
+  const hasCredentialForwarding = networkDestinations.some((destination) => hasSecretFlowToUrl(text, destination.index, destination.url.length));
+  const hasPrivateDataHarvesting = hasBroadPrivateDataHarvesting(text);
   const hasHiddenCommentExfiltration = /<!--[\s\S]{0,500}(private|confidential|internal|source|trace|facts?)[\s\S]{0,500}-->/i.test(text)
     && /\b(silent|silently|never show|not visible|hidden|comment)\b/i.test(text);
   const hasShellExecution = /\b(curl|wget|bash|sh|zsh|powershell|pwsh|python(?:3)?\s+-c|node\s+-e|exec(?:ute)? command|run shell|terminal command|subprocess|os\.system|child_process)\b/i.test(text);
@@ -215,8 +260,7 @@ export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(
   const hasHiddenInstructions = /<[^>]+(?:display\s*:\s*none|visibility\s*:\s*hidden|color\s*:\s*(?:white|#fff|transparent))/i.test(text)
     || /[\u{E0000}-\u{E007F}]/u.test(text)
     || /\b(base64|rot13|invisible text|white text|hidden span)\b/i.test(text);
-  const hasRemoteInstructionFetch = /\b(fetch|download|pull|load|retrieve)\b.{0,80}\b(instructions?|prompt|rules?|policy|latest skill|remote)\b/i.test(text)
-    && networkDestinations.some((d) => !d.trusted);
+  const hasRemoteInstructionFetch = networkDestinations.some((destination) => hasRemoteInstructionFetchNear(text, destination.index));
   const purposeText = `${skill?.name ?? ''} ${skill?.description ?? ''}`.toLowerCase();
   const narrowPurpose = /\b(summary|summari[sz]e|meeting|transcription|document|writing|format|notion|report|research|notes?)\b/.test(purposeText);
   const purposeCapabilityMismatch = narrowPurpose
@@ -259,6 +303,70 @@ export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(
   };
 }
 
+const SECRET_NOUN = /\b(?:api[_ -]?keys?|oauth tokens?|refresh[_ -]?tokens?|access[_ -]?tokens?|auth[_ -]?tokens?|bearer[_ -]?tokens?|credentials?|secrets?|passwords?|private[_ -]?keys?|seed phrases?|mnemonics?|browser cookies?|session tokens?|debug_context)\b/i;
+const SECRET_ACCESS_ACTION = /\b(?:read|scan|search|collect|extract|access|load|retrieve|obtain|capture|harvest|steal|find|look for)\b/i;
+const FORWARD_ACTION = /\b(?:send|post|upload|transmit|forward|submit|append|include|report|publish|exfiltrate)\b/i;
+
+function hasSecretAccessIntent(text: string): boolean {
+  const credentialPath = /(?:~\/|\$HOME\/|\/home\/[^/\s]+\/)\.(?:ssh|aws|config|env|credentials|npmrc|pypirc|docker)|\.env\b|credentials\.json|tokens?\.json/i;
+  if (credentialPath.test(text)) return true;
+  for (const match of text.matchAll(new RegExp(SECRET_NOUN.source, 'gi'))) {
+    const block = semanticBlockAround(text, match.index ?? 0, match[0].length, 180);
+    if (SECRET_ACCESS_ACTION.test(block.text) && !isProtectiveSecretContext(block.text)) return true;
+  }
+  return false;
+}
+
+export function hasSecretFlowToUrl(text: string, urlIndex: number, urlLength = 0): boolean {
+  const block = semanticBlockAround(text, urlIndex, urlLength, 900);
+  const localUrlIndex = Math.max(0, urlIndex - block.start);
+  const beforeUrl = block.text.slice(Math.max(0, localUrlIndex - 700), localUrlIndex);
+  if (!SECRET_NOUN.test(beforeUrl) || !FORWARD_ACTION.test(beforeUrl)) return false;
+  if (/(?:\b(?:do not|don't|never|must not|should not|without)\b|\bavoid\b)[^.!?\n]{0,80}\b(?:send|post|upload|transmit|forward|submit|include|append|report|publish)\b/i.test(beforeUrl)) return false;
+  const secret = lastMatchIndex(beforeUrl, SECRET_NOUN);
+  const forwarding = lastMatchIndex(beforeUrl, FORWARD_ACTION);
+  return secret >= 0 && forwarding >= 0 && Math.abs(forwarding - secret) <= 450;
+}
+
+export function hasRemoteInstructionFetchNear(text: string, urlIndex: number): boolean {
+  const block = semanticBlockAround(text, urlIndex, 0, 500).text;
+  const executableInstructions = '(?:instructions?|system prompts?|behavioral (?:rules?|polic(?:y|ies))|system polic(?:y|ies)|skill files?)';
+  return new RegExp(`\\b(?:fetch|download|pull|load|retrieve|import|follow)\\b[^.!?\\n]{0,160}\\b${executableInstructions}\\b`, 'i').test(block)
+    || new RegExp(`\\b${executableInstructions}\\b[^.!?\\n]{0,160}\\b(?:from|at)\\s+https?:\\/\\/`, 'i').test(block);
+}
+
+function hasBroadPrivateDataHarvesting(text: string): boolean {
+  const broadScope = /\b(?:all accessible|all project|all workspace|entire (?:project|workspace|repository)|every (?:file|document)|recursively|across (?:the )?(?:project|workspace|repository))\b/i;
+  const privateData = /\b(?:private|confidential|internal|unreleased|investor|customer|pricing|business plans?|credentials?|secrets?)\b/i;
+  const harvesting = /\b(?:search|scan|read|collect|extract|harvest|enumerate)\b/i;
+  for (const match of text.matchAll(new RegExp(harvesting.source, 'gi'))) {
+    const block = semanticBlockAround(text, match.index ?? 0, match[0].length, 240).text;
+    if (broadScope.test(block) && privateData.test(block) && !isProtectiveSecretContext(block)) return true;
+  }
+  return false;
+}
+
+function isProtectiveSecretContext(text: string): boolean {
+  return /\b(?:do not|don't|never|must not|should not|avoid)\b[^.!?\n]{0,100}\b(?:read|access|collect|send|share|expose|include|log|store|upload)\b/i.test(text)
+    || /\b(?:redact|mask|filter|detect|ignore|exclude|remove|protect)\b[^.!?\n]{0,100}\b(?:credentials?|secrets?|passwords?|tokens?|private keys?)\b/i.test(text);
+}
+
+function semanticBlockAround(text: string, index: number, length: number, radius: number): { text: string; start: number } {
+  const lower = Math.max(0, index - radius);
+  const upper = Math.min(text.length, index + length + radius);
+  const paragraphStart = text.lastIndexOf('\n\n', index);
+  const paragraphEnd = text.indexOf('\n\n', index + length);
+  const start = Math.max(lower, paragraphStart === -1 ? 0 : paragraphStart + 2);
+  const end = Math.min(upper, paragraphEnd === -1 ? text.length : paragraphEnd);
+  return { text: text.slice(start, end), start };
+}
+
+function lastMatchIndex(text: string, regex: RegExp): number {
+  let last = -1;
+  for (const match of text.matchAll(new RegExp(regex.source, `${regex.flags.replace('g', '')}g`))) last = match.index ?? last;
+  return last;
+}
+
 function findUrls(text: string): Array<{ url: string; index: number }> {
   const re = /https?:\/\/[^\s)"'`<>]+/g;
   const out: Array<{ url: string; index: number }> = [];
@@ -287,7 +395,7 @@ function destinationKind(host: string): DestinationKind {
   if (host === 'discord.com' || host === 'discordapp.com' || host === 'hooks.slack.com' || host === 'api.telegram.org') return 'chat_webhook';
   if (host === 'api.openai.com' || host === 'api.anthropic.com' || host === 'generativelanguage.googleapis.com' || host.endsWith('.workers-ai.cloudflare.com')) return 'trusted_ai_api';
   if (host === 'registry.npmjs.org' || host === 'pypi.org' || host === 'files.pythonhosted.org' || host === 'crates.io' || host === 'github.com' || host === 'raw.githubusercontent.com') return 'package_registry';
-  if (host === 'huggingface.co' || host === 'docs.anthropic.com' || host === 'platform.openai.com') return 'trusted_source';
+  if (host === 'huggingface.co' || host === 'docs.anthropic.com' || host === 'docs.claude.com' || host === 'support.claude.com' || host === 'anthropic.com' || host === 'www.anthropic.com' || host === 'platform.openai.com') return 'trusted_source';
   return 'unknown_remote';
 }
 
