@@ -1,7 +1,7 @@
 import type { Rule, Finding, Severity } from '../index';
 import { lineOf } from '../index';
 
-const SECRET_ACCESS_PATTERNS: Array<{ id: string; regex: RegExp; severity: Severity; reason: string }> = [
+const SECRET_ACCESS_PATTERNS: Array<{ id: string; regex: RegExp; severity: Severity; reason: string; requiresAccessIntent?: boolean }> = [
   {
     id: 'sec-env-aws',
     regex: /\b(AWS_ACCESS_KEY_ID|AWS_SECRET_ACCESS_KEY|AWS_SESSION_TOKEN)\b/,
@@ -24,7 +24,8 @@ const SECRET_ACCESS_PATTERNS: Array<{ id: string; regex: RegExp; severity: Sever
     id: 'sec-dotfile-read',
     regex: /(\.aws\/credentials|\.ssh\/id_(rsa|ed25519|dsa)|\.netrc|\.npmrc|\.docker\/config\.json|\.kube\/config)/,
     severity: 'critical',
-    reason: 'References a known credential file path. Highly suspicious.',
+    reason: 'Accesses a known credential file path. Highly suspicious.',
+    requiresAccessIntent: true,
   },
   {
     id: 'sec-browser-cookies',
@@ -59,6 +60,7 @@ export const secretsRules: Rule[] = [
           const re = new RegExp(p.regex.source, p.regex.flags.includes('g') ? p.regex.flags : p.regex.flags + 'g');
           let m: RegExpExecArray | null;
           while ((m = re.exec(f.text))) {
+            if (p.requiresAccessIntent && !hasAccessIntent(f.text, m.index, m[0].length)) continue;
             findings.push({
               ruleId: p.id,
               category: 'secrets',
@@ -76,3 +78,10 @@ export const secretsRules: Rule[] = [
     },
   },
 ];
+
+function hasAccessIntent(text: string, index: number, length: number): boolean {
+  const lineStart = text.lastIndexOf('\n', index) + 1;
+  const nextLine = text.indexOf('\n', index + length);
+  const line = text.slice(lineStart, nextLine === -1 ? text.length : nextLine);
+  return /\b(read|load|open|copy|collect|extract|upload|send|forward|steal|exfiltrate|cat|type|get-content)\b|\b(?:readFile|readFileSync|read_text|getText|openSync)\s*\(/i.test(line);
+}

@@ -125,7 +125,7 @@ export const exfiltrationRules: Rule[] = [
     id: 'exfil-image-beacon',
     category: 'exfiltration',
     defaultSeverity: 'high',
-    description: 'Markdown/HTML image references pointing at hosts that could log requests (zero-pixel beacons).',
+    description: 'Markdown/HTML image references with concrete tracking-beacon indicators.',
     detect: (ctx) => {
       const findings: Finding[] = [];
       const imgMd = /!\[[^\]]*\]\((https?:\/\/[^)]+)\)/g;
@@ -139,11 +139,12 @@ export const exfiltrationRules: Rule[] = [
             if (!url) continue;
             const host = hostOf(url);
             if (!host || KNOWN_BENIGN_HOSTS.has(host)) continue;
+            if (!hasBeaconIndicators(m[0], url)) continue;
             findings.push({
               ruleId: 'exfil-image-beacon',
               category: 'exfiltration',
               severity: 'medium',
-              explanation: `Image reference to ${host}. Loading the image makes a request to that server, which can be used as a beacon.`,
+              explanation: `Image reference to ${host} has tracking-beacon indicators (for example a tracking path/query or hidden/tiny dimensions).`,
               filePath: f.path,
               lineStart: lineOf(f.text, m.index),
               snippet: m[0].slice(0, 160),
@@ -155,3 +156,9 @@ export const exfiltrationRules: Rule[] = [
     },
   },
 ];
+
+function hasBeaconIndicators(reference: string, url: string): boolean {
+  const trackingUrl = /[?&](?:id|uid|user|email|token|session|ref|source|utm_[a-z]+|[a-z_]*track[a-z_]*)=|\{[a-zA-Z_][a-zA-Z0-9_]*\}|\/(?:pixel|beacon|track(?:er|ing)?)(?:[/.?]|$)/i.test(url);
+  const hiddenOrTiny = /\b(?:width|height)\s*=\s*["']?0?[01](?:px)?["']?|display\s*:\s*none|visibility\s*:\s*hidden/i.test(reference);
+  return trackingUrl || hiddenOrTiny;
+}

@@ -169,8 +169,9 @@ function primaryMarkdownFile(files: NormalizedFile[]): NormalizedFile | undefine
  * rule can't poison the whole verification.
  */
 export async function runRules(files: NormalizedFile[]): Promise<Finding[]> {
-  const skill = parseSkill(files);
-  const ctx: AnalysisContext = { files, skill, signals: extractSkillSignals(files, skill) };
+  const analysisFiles = files.map((file) => ({ ...file, text: analysisTextForFile(file) }));
+  const skill = parseSkill(analysisFiles);
+  const ctx: AnalysisContext = { files: analysisFiles, skill, signals: extractSkillSignals(analysisFiles, skill) };
   const out: Finding[] = [];
   for (const rule of ALL_RULES) {
     try {
@@ -182,6 +183,53 @@ export async function runRules(files: NormalizedFile[]): Promise<Finding[]> {
     }
   }
   return out;
+}
+
+/** Mask comments in executable/configuration files while preserving offsets. */
+export function analysisTextForFile(file: NormalizedFile): string {
+  const extension = file.path.toLowerCase().match(/(?:^|\/)[^/]+(\.[^.\/]+)$/)?.[1] ?? '';
+  if (['.py', '.pyw', '.sh', '.bash', '.zsh', '.fish', '.rb', '.pl', '.r', '.ps1', '.yaml', '.yml', '.toml'].includes(extension)) {
+    return maskComments(file.text, { hash: true });
+  }
+  if (['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.java', '.c', '.cc', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.swift', '.kt', '.kts', '.php', '.css', '.scss', '.less'].includes(extension)) {
+    return maskComments(file.text, { slash: true, block: true });
+  }
+  if (extension === '.sql') return maskComments(file.text, { dash: true, block: true });
+  return file.text;
+}
+
+function maskComments(text: string, syntax: { hash?: boolean; slash?: boolean; dash?: boolean; block?: boolean }): string {
+  const chars = [...text];
+  let quote: string | null = null;
+  let escaped = false;
+  const blank = (start: number, end: number) => {
+    for (let j = start; j < end; j++) if (chars[j] !== '\n' && chars[j] !== '\r') chars[j] = ' ';
+  };
+  for (let i = 0; i < chars.length; i++) {
+    const ch = chars[i] ?? '';
+    const next = chars[i + 1] ?? '';
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+    const lineComment = (syntax.hash && ch === '#') || (syntax.slash && ch === '/' && next === '/') || (syntax.dash && ch === '-' && next === '-');
+    if (lineComment) {
+      const end = text.indexOf('\n', i);
+      blank(i, end === -1 ? chars.length : end);
+      i = (end === -1 ? chars.length : end) - 1;
+      continue;
+    }
+    if (syntax.block && ch === '/' && next === '*') {
+      const close = text.indexOf('*/', i + 2);
+      const end = close === -1 ? chars.length : close + 2;
+      blank(i, end);
+      i = end - 1;
+    }
+  }
+  return chars.join('');
 }
 
 export function extractSkillSignals(files: NormalizedFile[], skill = parseSkill(files)): SkillSignalProfile {
