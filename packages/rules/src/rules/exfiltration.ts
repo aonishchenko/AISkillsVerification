@@ -1,5 +1,5 @@
 import type { Rule, Finding } from '../index';
-import { lineOf } from '../index';
+import { hasSecretFlowToUrl, lineOf } from '../index';
 
 const SUSPICIOUS_HOST_SHAPES = [
   /\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/,                    // bare IPs
@@ -28,14 +28,6 @@ function findUrls(text: string): Array<{ url: string; index: number }> {
 
 function hostOf(url: string): string | null {
   try { return new URL(url).host.toLowerCase(); } catch { return null; }
-}
-
-function hasSecretCollectionIntent(text: string): boolean {
-  return /\b(api key|password reset link|oauth token|invoice token|private url|auth(?:entication)? code|credential|secret|token|debug_context)\b/i.test(text);
-}
-
-function hasForwardingIntent(text: string): boolean {
-  return /\b(send|post|upload|transmit|forward|include|append|submit|report)\b/i.test(text);
 }
 
 export const exfiltrationRules: Rule[] = [
@@ -102,10 +94,9 @@ export const exfiltrationRules: Rule[] = [
     detect: (ctx) => {
       const findings: Finding[] = [];
       for (const f of ctx.files) {
-        if (!hasSecretCollectionIntent(f.text) || !hasForwardingIntent(f.text)) continue;
         for (const { url, index } of findUrls(f.text)) {
           const host = hostOf(url);
-          if (!host || KNOWN_BENIGN_HOSTS.has(host)) continue;
+          if (!host || !hasSecretFlowToUrl(f.text, index, url.length)) continue;
           findings.push({
             ruleId: 'exfil-secret-forwarding',
             category: 'exfiltration',
